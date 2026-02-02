@@ -22,6 +22,89 @@ await mcpServer.connect(mcpTransport);
 
 app.all("/mcp", (c) => mcpTransport.handleRequest(c.req.raw));
 
+// =============================================================================
+// REST API - Simple endpoints for agents to discover and query the registry
+// =============================================================================
+
+import { searchAgentsTool, getAgentTool, getAgentToolsTool, getAgentHealthTool, getStatsTool } from "./mcp/tools";
+
+// Search agents
+// GET /api/agents/search?q=defi&mcp=true&a2a=true&x402=true&tag=social&limit=10
+app.get("/api/agents/search", async (c) => {
+  try {
+    const q = c.req.query("q");
+    const mcp = c.req.query("mcp") === "true";
+    const a2a = c.req.query("a2a") === "true";
+    const x402 = c.req.query("x402") === "true";
+    const tag = c.req.query("tag");
+    const limit = Number(c.req.query("limit")) || 10;
+
+    const result = await searchAgentsTool({
+      query: q,
+      has_mcp: mcp || undefined,
+      has_a2a: a2a || undefined,
+      has_x402: x402 || undefined,
+      tag: tag || undefined,
+      limit
+    });
+
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+// Get agent details
+// GET /api/agents/:id
+app.get("/api/agents/:id", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const result = await getAgentTool({ id });
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: String(e) }, 404);
+  }
+});
+
+// Get agent tools/capabilities
+// GET /api/agents/:id/tools
+app.get("/api/agents/:id/tools", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const result = await getAgentToolsTool({ id });
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: String(e) }, 404);
+  }
+});
+
+// Get agent health status
+// GET /api/agents/:id/health
+app.get("/api/agents/:id/health", async (c) => {
+  try {
+    const id = c.req.param("id");
+    const result = await getAgentHealthTool({ id });
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+// Get registry stats
+// GET /api/stats
+app.get("/api/stats", async (c) => {
+  try {
+    const result = await getStatsTool();
+    return c.json(result);
+  } catch (e) {
+    return c.json({ error: String(e) }, 500);
+  }
+});
+
+// =============================================================================
+// Health Check Routes (existing)
+// =============================================================================
+
 // Specific routes BEFORE parameterized routes
 app.get("/health/stats", async (c) => {
   if (!db) {
