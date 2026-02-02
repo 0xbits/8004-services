@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "bun --hot src/index.ts",
-    "start": "bun src/index.ts"
+    "start": "bun src/index.ts",
+    "migrate": "bun scripts/migrate.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
