@@ -13,6 +13,46 @@ await mcpServer.connect(mcpTransport);
 
 app.all("/mcp", (c) => mcpTransport.handleRequest(c.req.raw));
 
+// Specific routes BEFORE parameterized routes
+app.get("/health/stats", async (c) => {
+  if (!db) {
+    return c.json({ error: "DATABASE_URL is not set" }, 500);
+  }
+
+  const rows = await db
+    .select({
+      status: agentHealth.status,
+      count: sql<number>`count(*)`.mapWith(Number)
+    })
+    .from(agentHealth)
+    .groupBy(agentHealth.status);
+
+  const counts = rows.reduce<Record<string, number>>((acc, row) => {
+    acc[row.status] = row.count;
+    return acc;
+  }, {});
+
+  return c.json({
+    total: rows.reduce((sum, row) => sum + row.count, 0),
+    counts
+  });
+});
+
+app.get("/health/recent", async (c) => {
+  if (!db) {
+    return c.json({ error: "DATABASE_URL is not set" }, 500);
+  }
+
+  const rows = await db
+    .select()
+    .from(agentHealth)
+    .orderBy(desc(agentHealth.lastCheckedAt))
+    .limit(20);
+
+  return c.json(rows);
+});
+
+// Parameterized route AFTER specific routes
 app.get("/health/:agentId", async (c) => {
   if (!db) {
     return c.json({ error: "DATABASE_URL is not set" }, 500);
@@ -51,44 +91,6 @@ app.get("/health/:agentId", async (c) => {
     x402Price: row.x402Price,
     x402Currency: row.x402Currency
   });
-});
-
-app.get("/health/stats", async (c) => {
-  if (!db) {
-    return c.json({ error: "DATABASE_URL is not set" }, 500);
-  }
-
-  const rows = await db
-    .select({
-      status: agentHealth.status,
-      count: sql<number>`count(*)`.mapWith(Number)
-    })
-    .from(agentHealth)
-    .groupBy(agentHealth.status);
-
-  const counts = rows.reduce<Record<string, number>>((acc, row) => {
-    acc[row.status] = row.count;
-    return acc;
-  }, {});
-
-  return c.json({
-    total: rows.reduce((sum, row) => sum + row.count, 0),
-    counts
-  });
-});
-
-app.get("/health/recent", async (c) => {
-  if (!db) {
-    return c.json({ error: "DATABASE_URL is not set" }, 500);
-  }
-
-  const rows = await db
-    .select()
-    .from(agentHealth)
-    .orderBy(desc(agentHealth.lastCheckedAt))
-    .limit(20);
-
-  return c.json(rows);
 });
 
 const port = Number(process.env.PORT ?? 3001);
