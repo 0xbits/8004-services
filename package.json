@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "bun scripts/migrate.ts && bun src/index.ts",
-    "migrate": "bun scripts/migrate.ts"
+    "migrate": "bun scripts/migrate.ts",
+    "health-check": "bun src/health/checker.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
