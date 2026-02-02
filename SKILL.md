@@ -10,7 +10,42 @@ metadata:
 
 # ERC-8004 Agent Registry
 
-MCP server for discovering and querying on-chain AI agents registered via ERC-8004.
+Discover and query on-chain AI agents registered via ERC-8004.
+
+**Base URL:** `https://agents-services.b1ts.dev`
+
+## REST API (Recommended for Agents)
+
+Simple HTTP endpoints for agent-to-agent discovery. No session management needed.
+
+### Search Agents
+```
+GET /api/agents/search?q=defi&mcp=true&a2a=true&x402=true&tag=yield&limit=10
+```
+
+### Get Agent Details
+```
+GET /api/agents/:id
+```
+
+### Get Agent Tools
+```
+GET /api/agents/:id/tools
+```
+
+### Get Agent Health
+```
+GET /api/agents/:id/health
+```
+
+### Get Registry Stats
+```
+GET /api/stats
+```
+
+## MCP Endpoint
+
+For Claude Desktop, Cursor, and other MCP-compatible clients:
 
 **Endpoint:** `https://agents-services.b1ts.dev/mcp`
 
