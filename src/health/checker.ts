@@ -6,12 +6,20 @@ const INDEXER_API = process.env.INDEXER_API_URL ?? "https://agents-api.b1ts.dev"
 const BATCH_SIZE = 10;
 const CHECK_INTERVAL_MS = 1000; // 1 req/sec rate limit friendly
 
-interface Agent {
+interface AgentService {
+  name: string;
+  endpoint: string;
+}
+
+interface AgentBasic {
   id: string;
-  url: string | null;
-  mcpUrl: string | null;
-  a2aUrl: string | null;
-  x402Url: string | null;
+  hasMCP: boolean;
+  hasA2A: boolean;
+}
+
+interface AgentDetail {
+  id: string;
+  services?: AgentService[] | null;
 }
 
 interface HealthResult {
@@ -30,11 +38,32 @@ interface HealthResult {
   x402Currency?: string;
 }
 
-async function fetchAgentsSample(offset: number, limit: number): Promise<Agent[]> {
-  const res = await fetch(`${INDEXER_API}/agents?offset=${offset}&limit=${limit}`);
+async function fetchAgentIds(offset: number, limit: number): Promise<AgentBasic[]> {
+  // Use search endpoint with mcp=true or a2a=true to get agents that have endpoints
+  const res = await fetch(`${INDEXER_API}/search?q=&offset=${offset}&limit=${limit}&mcp=true`);
   if (!res.ok) throw new Error(`Failed to fetch agents: ${res.status}`);
   const data = await res.json();
-  return data.agents ?? [];
+  return (data.results ?? []).map((a: { id: string; hasMCP?: boolean; hasA2A?: boolean }) => ({
+    id: a.id,
+    hasMCP: a.hasMCP ?? false,
+    hasA2A: a.hasA2A ?? false,
+  }));
+}
+
+async function fetchAgentDetail(id: string): Promise<AgentDetail | null> {
+  try {
+    const res = await fetch(`${INDEXER_API}/agents/${id}`);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+function findServiceEndpoint(services: AgentService[] | null | undefined, pattern: RegExp): string | null {
+  if (!services) return null;
+  const service = services.find(s => pattern.test(s.name));
+  return service?.endpoint ?? null;
 }
 
 async function checkEndpoint(url: string, timeout = 10000): Promise<{ ok: boolean; status?: number; latencyMs: number; error?: string }> {
@@ -121,12 +150,23 @@ async function checkA2aEndpoint(url: string): Promise<{ valid: boolean; skillsCo
   }
 }
 
-async function checkAgent(agent: Agent): Promise<HealthResult> {
-  const agentId = Number(agent.id);
+async function checkAgent(agentBasic: AgentBasic): Promise<HealthResult | null> {
+  const agentId = Number(agentBasic.id);
   const result: HealthResult = { agentId, status: "unreachable" };
   
-  // Check primary URL first
-  const primaryUrl = agent.url || agent.mcpUrl || agent.a2aUrl;
+  // Fetch full agent detail to get service endpoints
+  const agent = await fetchAgentDetail(agentBasic.id);
+  if (!agent || !agent.services || agent.services.length === 0) {
+    return null; // No services to check
+  }
+  
+  // Find MCP and A2A endpoints
+  const mcpUrl = findServiceEndpoint(agent.services, /^mcp$/i);
+  const a2aUrl = findServiceEndpoint(agent.services, /^a2a$/i);
+  const webUrl = findServiceEndpoint(agent.services, /^web$/i);
+  
+  // Check primary URL first (prefer web, then mcp, then a2a)
+  const primaryUrl = webUrl || mcpUrl || a2aUrl;
   if (primaryUrl) {
     const check = await checkEndpoint(primaryUrl);
     result.latencyMs = check.latencyMs;
@@ -136,16 +176,16 @@ async function checkAgent(agent: Agent): Promise<HealthResult> {
   }
   
   // Check MCP if available
-  if (agent.mcpUrl) {
-    const mcp = await checkMcpEndpoint(agent.mcpUrl);
+  if (mcpUrl) {
+    const mcp = await checkMcpEndpoint(mcpUrl);
     result.mcpValid = mcp.valid;
     result.mcpToolsCount = mcp.toolsCount;
     result.mcpError = mcp.error;
   }
   
   // Check A2A if available
-  if (agent.a2aUrl) {
-    const a2a = await checkA2aEndpoint(agent.a2aUrl);
+  if (a2aUrl) {
+    const a2a = await checkA2aEndpoint(a2aUrl);
     result.a2aValid = a2a.valid;
     result.a2aSkillsCount = a2a.skillsCount;
     result.a2aError = a2a.error;
@@ -214,22 +254,19 @@ export async function runHealthCheck(maxAgents = 100) {
   let offset = 0;
   
   while (checked < maxAgents) {
-    const agents = await fetchAgentsSample(offset, BATCH_SIZE);
+    const agents = await fetchAgentIds(offset, BATCH_SIZE);
     if (agents.length === 0) break;
     
     for (const agent of agents) {
       if (checked >= maxAgents) break;
       
-      // Only check agents that have at least one URL
-      if (!agent.url && !agent.mcpUrl && !agent.a2aUrl) {
-        continue;
-      }
-      
       try {
         const result = await checkAgent(agent);
-        await saveHealthResult(result);
-        console.log(`[health] Agent ${agent.id}: ${result.status} (${result.latencyMs}ms)`);
-        checked++;
+        if (result) {
+          await saveHealthResult(result);
+          console.log(`[health] Agent ${agent.id}: ${result.status} (${result.latencyMs ?? 0}ms)`);
+          checked++;
+        }
       } catch (err) {
         console.error(`[health] Error checking agent ${agent.id}:`, err);
       }
