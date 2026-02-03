@@ -6,6 +6,8 @@ import { agentHealth } from "./db/schema";
 import { createMcpServer } from "./mcp/server";
 import { createMcpTransport } from "./mcp/transport";
 import { runHealthCheck } from "./health/checker";
+import { llmsTxt } from "./llms";
+import { openAPISpec } from "./openapi";
 
 const app = new Hono();
 
@@ -198,6 +200,21 @@ app.get("/health/:agentId", async (c) => {
     x402Currency: row.x402Currency
   });
 });
+
+// =============================================================================
+// Documentation Routes
+// =============================================================================
+
+// Machine-readable documentation for AI assistants
+app.get("/llms.txt", (c) => {
+  return new Response(llmsTxt, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" }
+  });
+});
+
+// OpenAPI specification
+app.get("/api/openapi.json", (c) => c.json(openAPISpec));
+app.get("/openapi.json", (c) => c.json(openAPISpec)); // alias at root
 
 const port = Number(process.env.PORT ?? 3001);
 
